@@ -4,7 +4,7 @@ use crate::config::Config;
 use crate::ui;
 
 pub struct StorageCleanerApp {
-    big_files: ui::big_files::BigFilesTab,
+    disk_analysis: ui::disk_analysis::DiskAnalysisTab,
     unused_apps: ui::unused_apps::UnusedAppsTab,
     quick_clean: ui::quick_clean::QuickCleanTab,
     config: Config,
@@ -14,7 +14,7 @@ pub struct StorageCleanerApp {
 impl Default for StorageCleanerApp {
     fn default() -> Self {
         Self {
-            big_files: ui::big_files::BigFilesTab::default(),
+            disk_analysis: ui::disk_analysis::DiskAnalysisTab::default(),
             unused_apps: ui::unused_apps::UnusedAppsTab::default(),
             quick_clean: ui::quick_clean::QuickCleanTab::default(),
             config: Config::load(),
@@ -35,7 +35,7 @@ impl eframe::App for StorageCleanerApp {
             ui.heading("Storage Cleaner");
 
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.selected_tab, 0, "Big Files");
+                ui.selectable_value(&mut self.selected_tab, 0, "Disk Analysis");
                 ui.selectable_value(&mut self.selected_tab, 1, "Unused Apps");
                 ui.selectable_value(&mut self.selected_tab, 2, "Quick Clean");
                 ui.selectable_value(&mut self.selected_tab, 3, "Settings");
@@ -44,7 +44,7 @@ impl eframe::App for StorageCleanerApp {
             ui.separator();
 
             match self.selected_tab {
-                0 => self.big_files.ui(ui, ctx, &self.config),
+                0 => self.disk_analysis.ui(ui, ctx, &self.config),
                 1 => self.unused_apps.ui(ui, ctx),
                 2 => self.quick_clean.ui(ui, ctx),
                 3 => {

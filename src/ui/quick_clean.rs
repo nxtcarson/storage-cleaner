@@ -1,5 +1,6 @@
 use eframe::egui;
 use std::path::PathBuf;
+use std::thread::JoinHandle;
 
 fn dir_size(path: &std::path::Path) -> u64 {
     let mut total = 0u64;
@@ -51,6 +52,8 @@ pub struct QuickCleanTab {
     targets: Vec<CleanTarget>,
     sizes_done: bool,
     error_message: Option<String>,
+    clean_thread: Option<JoinHandle<Result<(), String>>>,
+    cleaning_label: Option<String>,
 }
 
 impl Default for QuickCleanTab {
@@ -88,15 +91,39 @@ impl Default for QuickCleanTab {
             targets,
             sizes_done: false,
             error_message: None,
+            clean_thread: None,
+            cleaning_label: None,
         }
     }
 }
 
 impl QuickCleanTab {
-    pub fn ui(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let is_cleaning = self.clean_thread.is_some();
+
+        // Poll background thread
+        if let Some(handle) = self.clean_thread.take() {
+            if handle.is_finished() {
+                if let Ok(result) = handle.join() {
+                    match result {
+                        Ok(()) => {
+                            self.sizes_done = false;
+                        }
+                        Err(e) => {
+                            self.error_message = Some(e);
+                        }
+                    }
+                }
+                self.cleaning_label = None;
+            } else {
+                self.clean_thread = Some(handle);
+                ctx.request_repaint();
+            }
+        }
+
         ui.label("Quick clean deletes contents of these folders. Sizes are computed on demand.");
 
-        if !self.sizes_done && ui.button("Compute sizes").clicked() {
+        if !self.sizes_done && !is_cleaning && ui.button("Compute sizes").clicked() {
             for t in &mut self.targets {
                 if t.path.exists() {
                     t.size = Some(dir_size(&t.path));
@@ -112,7 +139,16 @@ impl QuickCleanTab {
             }
         }
 
+        if let Some(ref label) = self.cleaning_label {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(format!("Clearing {}...", label));
+            });
+        }
+
         ui.add_space(8.0);
+
+        let mut clicked_path: Option<(PathBuf, String)> = None;
 
         for target in &mut self.targets {
             ui.horizontal(|ui| {
@@ -125,17 +161,21 @@ impl QuickCleanTab {
                 } else {
                     ui.label("(not found)");
                 }
-                if ui.button("Clear").clicked() && target.path.exists() {
-                    match clear_dir_contents(&target.path) {
-                        Ok(()) => {
-                            target.size = Some(0);
-                        }
-                        Err(e) => {
-                            self.error_message = Some(e);
-                        }
-                    }
+                let btn = ui.add_enabled(
+                    !is_cleaning && target.path.exists(),
+                    egui::Button::new("Clear"),
+                );
+                if btn.clicked() {
+                    clicked_path = Some((target.path.clone(), target.label.clone()));
                 }
             });
+        }
+
+        if let Some((path, label)) = clicked_path {
+            self.cleaning_label = Some(label);
+            let handle = std::thread::spawn(move || clear_dir_contents(&path));
+            self.clean_thread = Some(handle);
+            ctx.request_repaint();
         }
 
         ui.add_space(16.0);

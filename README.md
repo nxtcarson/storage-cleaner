@@ -5,9 +5,10 @@ A native desktop app that scans drives for large files and unused applications, 
 ## Requirements
 
 - Rust (install from https://rustup.rs)
-- Windows (for full Prefetch-based unused app detection; Big Files and Quick Clean work on any platform)
+- Windows: Visual Studio Build Tools with C++ workload (for MFT scanning)
+- Windows (for full Prefetch-based unused app detection; Disk Analysis and Quick Clean work on any platform)
 
-**Big Files (MFT scan):** On Windows NTFS drives, the app reads the Master File Table directly for much faster scanning (similar to Everything). This requires running as Administrator. If access is denied, it falls back to standard directory walking.
+**Disk Analysis (MFT scan):** On Windows NTFS drives, the app uses usn-journal-rs for fast MFT enumeration (similar to Everything). This requires running as Administrator. If access is denied, it falls back to parallel directory walking.
 
 ## Build
 
@@ -24,7 +25,7 @@ cargo run --release
 
 ## Features
 
-- **Big Files**: Scan a drive for files above a minimum size (default 50 MB), sort by size, select and delete to Recycle Bin
+- **Disk Analysis**: Fast drive scan with insights by extension, folder, and category. Largest files and stale files (6+ months old) views. AI automatically analyzes top files and suggests what's safe to delete. Save snapshots for later comparison.
 - **Unused Apps**: Find executables not run recently (uses Windows Prefetch when available), filter by days
 - **Quick Clean**: One-click clear of temp folders (user temp, Windows temp, update cache)
 
@@ -32,8 +33,9 @@ All deletions go to Recycle Bin when possible.
 
 ## AI Features (OpenAI)
 
-- **Ask AI**: Select a single file and click "Ask AI" to get advice on whether it's safe to delete
-- **AI Suggest**: After a scan, click "AI Suggest" to get recommendations on which files are safest to delete first
+- **Auto AI**: After a scan, the top ~50 largest files are automatically sent to the AI for analysis
+- **Structured verdicts**: Each file gets a verdict (safe_to_delete, review, keep) with reasoning
+- **Review Suggestions**: Files grouped by verdict; select and delete in one action
 
 **Setup:** Open the Settings tab and enter your OpenAI API key. It's stored locally at:
 - Windows: `%APPDATA%\storage-cleaner\config.json`

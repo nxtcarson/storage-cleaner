@@ -86,7 +86,7 @@ impl UnusedAppsTab {
             ui.add(
                 egui::DragValue::new(&mut self.unused_days)
                     .suffix(" days")
-                    .clamp_range(1..=365),
+                    .range(1..=365),
             );
         });
 

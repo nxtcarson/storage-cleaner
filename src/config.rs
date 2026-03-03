@@ -17,12 +17,16 @@ impl Config {
     }
 
     pub fn config_path() -> PathBuf {
+        Self::config_dir().join("config.json")
+    }
+
+    pub fn config_dir() -> PathBuf {
         #[cfg(windows)]
         {
             let mut path = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
             path.push_str("\\storage-cleaner");
             std::fs::create_dir_all(&path).ok();
-            PathBuf::from(path).join("config.json")
+            PathBuf::from(path)
         }
         #[cfg(not(windows))]
         {
@@ -30,8 +34,12 @@ impl Config {
                 .unwrap_or_else(|_| format!("{}/.config", std::env::var("HOME").unwrap_or_default()));
             let dir = PathBuf::from(path).join("storage-cleaner");
             std::fs::create_dir_all(&dir).ok();
-            dir.join("config.json")
+            dir
         }
+    }
+
+    pub fn snapshot_dir() -> PathBuf {
+        Self::config_dir().join("snapshots")
     }
 
     pub fn load() -> Self {

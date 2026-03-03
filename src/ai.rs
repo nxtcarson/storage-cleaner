@@ -29,24 +29,30 @@ struct ApiError {
     message: String,
 }
 
-pub fn ask_about_file(api_key: &str, model: &str, path: &str, size_bytes: u64) -> Result<String, String> {
-    let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
-    let prompt = format!(
-        "A user is considering deleting this file to free up disk space. Based only on the path and size, \
-        is this file likely important (system, app data, user documents) or safe to delete (cache, temp, downloads, etc)? \
-        Reply in 2-3 sentences. Be concise.\n\nFile: {}\nSize: {:.1} MB",
-        path, size_mb
-    );
-
-    let response = call_api(api_key, model, &prompt)?;
-    Ok(response.trim().to_string())
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiVerdict {
+    SafeToDelete,
+    Review,
+    Keep,
 }
 
-pub fn suggest_deletions(
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSuggestion {
+    pub path: String,
+    pub verdict: AiVerdict,
+    pub reason: String,
+}
+
+pub fn analyze_files(
     api_key: &str,
     model: &str,
     entries: &[(String, u64)],
-) -> Result<String, String> {
+) -> Result<Vec<AiSuggestion>, String> {
+    if api_key.is_empty() {
+        return Err("OpenAI API key not set. Add it in Settings.".to_string());
+    }
+
     let list: String = entries
         .iter()
         .take(50)
@@ -55,10 +61,47 @@ pub fn suggest_deletions(
         .join("\n");
 
     let prompt = format!(
-        "A user scanned their drive for large files. Suggest which of these are SAFEST to delete first \
-        (caches, temp, old downloads) vs which to KEEP (system, app data, documents). \
-        List 5-10 files that are safe to delete, with brief reason. Be concise.\n\nFiles:\n{}",
+        r#"Analyze these large files for disk cleanup. For EACH file, respond with a JSON array of objects.
+Each object must have: "path" (exact path string), "verdict" ("safe_to_delete" | "review" | "keep"), "reason" (brief explanation).
+- safe_to_delete: caches, temp, old downloads, redundant copies
+- review: might be important, user should decide
+- keep: system files, app data, important documents
+
+Respond ONLY with valid JSON array, no other text. Example:
+[{{"path":"C:\\temp\\old.zip","verdict":"safe_to_delete","reason":"Temp archive"}},{{"path":"C:\\Users\\doc.pdf","verdict":"keep","reason":"User document"}}]
+
+Files:
+{}"#,
         list
+    );
+
+    let response = call_api(api_key, model, &prompt)?;
+    let response = response.trim();
+    let response = response
+        .strip_prefix("```json")
+        .or_else(|| response.strip_prefix("```"))
+        .and_then(|s| s.strip_suffix("```"))
+        .unwrap_or(response)
+        .trim();
+
+    let suggestions: Vec<AiSuggestion> = serde_json::from_str(response)
+        .map_err(|e| format!("AI returned invalid JSON: {}. Raw: {}", e, &response[..response.len().min(200)]))?;
+
+    Ok(suggestions)
+}
+
+pub fn ask_about_file(
+    api_key: &str,
+    model: &str,
+    path: &str,
+    size_bytes: u64,
+) -> Result<String, String> {
+    let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
+    let prompt = format!(
+        "A user is considering deleting this file to free up disk space. Based only on the path and size, \
+        is this file likely important (system, app data, user documents) or safe to delete (cache, temp, downloads, etc)? \
+        Reply in 2-3 sentences. Be concise.\n\nFile: {}\nSize: {:.1} MB",
+        path, size_mb
     );
 
     let response = call_api(api_key, model, &prompt)?;
@@ -76,7 +119,7 @@ fn call_api(api_key: &str, model: &str, content: &str) -> Result<String, String>
         messages: vec![
             ChatMessage {
                 role: "system".into(),
-                content: "You are a helpful assistant that advises on file safety for disk cleanup.".into(),
+                content: "You are a helpful assistant that advises on file safety for disk cleanup. When asked for JSON, respond only with valid JSON.".into(),
             },
             ChatMessage {
                 role: "user".into(),
